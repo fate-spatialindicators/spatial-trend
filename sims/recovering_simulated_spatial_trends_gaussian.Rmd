@@ -1,0 +1,543 @@
+---
+title: "Recovering simulated spatial trends"
+author: ""
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message = FALSE, results="hide")
+devtools::install_github("pbs-assess/sdmTMB")
+library(sdmTMB)
+library(dplyr)
+library(ggplot2)
+library(mgcv)
+```
+
+# Simulating data
+
+The general steps for simulating data from a spatiotemporal model to include the trend are to (1) create a set of coordinates representing the locations of observed data, (2) simulate the spatiotemporal data without the trend, (3) simulate the spatial trend separately, and (4) combine results from (2) and (3). 
+
+Here the parameter kappa controls the degree of spatial decay (smaller values correspond to faster decay).
+
+```{r}
+set.seed(123)
+
+coords = data.frame(x = stats::runif(100, 0, 10),
+  y = stats::runif(100,0,10))
+
+dat = sdmTMB::sim(x = coords$x, y = coords$y, 
+  time_steps = 10, plot = FALSE,
+  ar1_fields = FALSE)
+trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+  time_steps = 1, sigma_E = 0, 
+  plot = FALSE, kappa=1)
+
+# join in the trend for each location
+trend = dplyr::rename(trend, trend= observed) %>%
+  dplyr::select(trend,x,y)
+dat = dplyr::left_join(dat, trend) %>% 
+  dplyr::mutate(obs = observed + trend * (time-1))
+```
+
+The trend component looks like this,
+```{r fig.pos="placeHere", fig.cap="Simulated spatial trend"}
+ggplot(trend, aes(x,y,col=trend)) + geom_point() + 
+  scale_colour_gradient2() + xlab("X") + ylab("Y")
+```
+
+We can then plot the data with and without the trend (for a subset of time slices, here time 1, 5, and 10).
+
+```{r fig.pos="placeHere", fig.cap="Simulated data with and without the spatial trend"}
+g1 = ggplot(dplyr::filter(dat,time%in%c(1,5,10)) %>% 
+    dplyr::rename(value = observed), aes(x,y,col=value), aes(x,y,col=value)) + 
+  geom_point() + scale_colour_gradient2() + 
+  xlab("") + ylab("") + facet_wrap(~time) + ggtitle("Without trend") + 
+  theme_sleek()
+g2 = ggplot(dplyr::filter(dat,time%in%c(1,5,10)) %>% 
+    dplyr::rename(value = obs), aes(x,y,col=value)) + 
+  geom_point() + scale_colour_gradient2() + 
+  xlab("") + ylab("") + facet_wrap(~time) + ggtitle("With trend") + theme_sleek()
+pdf("sims/evolution_of_trend.pdf")
+gridExtra::grid.arrange(g1, g2, nrow=2)
+dev.off()
+```
+
+# Simulations: recovering the spatial trend across simulated datasets
+
+Using the above approach, we can simulate a large number of datasets to evaluate the ability to recover the spatial trend. Initially, we'll just use a Gaussian response, and compare the estimated trend spatial field to the observed one. There are lots of ways to summarize this, but we will use RMSE. 
+
+```{r}
+set.seed(123)
+n = 100
+grid = expand.grid("kappa" = 1,
+  "phi" = c(0.01,0.25,0.5,0.75,1),
+  "sigma_O" = 0.01,
+  "sigma_E" = c(0.01,0.25,0.5,0.75,1),
+  "seed" = .Random.seed[1:n],
+  "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
+  "sim_spatiotemporal" = TRUE,
+  "est_spatiotemporal" = TRUE)
+```
+
+Then iterate through the grid, simulating and estimating the underlying trend field.   
+```{r warning =FALSE, results='hide', message = FALSE}
+if(!file.exists("sims/grid.rds")) {
+  # then do all the simulations below
+for(i in 1:nrow(grid)) {
+
+  set.seed(grid$seed[i])
+  coords = data.frame(x = stats::runif(40, 0, 10),
+    y = stats::runif(40,0,10))
+  
+  dat = sdmTMB::sim(x = coords$x, y = coords$y, 
+    time_steps = 10, plot = FALSE,
+    ar1_fields = FALSE,
+    sigma_O = grid$sigma_O[i], 
+    kappa = grid$kappa[i],
+    phi = grid$phi[i], 
+    sigma_E = grid$sigma_E[i])
+  
+  trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+    time_steps = 1, sigma_E = 0, 
+    plot = FALSE, kappa=0.1)
+  
+  # join in the trend for each location
+  trend = dplyr::rename(trend, trend= observed) %>%
+    dplyr::select(trend,x,y)
+  dat = dplyr::left_join(dat, trend) %>% 
+    dplyr::mutate(obs = observed + trend * (time-1))
+  
+  # fit the model
+  spde <- make_spde(x = dat$x, y = dat$y, n_knots = 25)
+  mod = try(sdmTMB(formula = obs ~ 1, 
+    data = dat[,c("time","x","y","obs")], time="time",
+    spatial_trend = TRUE, spde=spde,
+    spatial_only = ifelse(grid$est_spatiotemporal[i]==FALSE, 
+      TRUE, FALSE)) , silent=TRUE)
+  # filter out the unconverged cases or cases with warnings for hessian
+  if(class(mod) != "try-error" & length(which(is.na(sqrt(diag(mod$sd_report$cov.fixed))))) == 0) {
+    
+    pred = dplyr::filter(predict(mod, 
+    newdata = dplyr::filter(dat[,c("time","x","y","obs")]), 
+    xy_cols = c("x", "y")), time==1)
+  
+    trend = dplyr::left_join(trend, pred[c("x","y","zeta_s")])
+    
+    # summarize the trend and RMSE
+    grid$rho[i] = cor(trend$trend,trend$zeta_s)
+    grid$bias[i] = mean(trend$trend - trend$zeta_s)
+    grid$sd[i] = sd(trend$trend - trend$zeta_s)
+    grid$rmse[i] = sqrt(mean((trend$trend - trend$zeta_s)^2))
+  }
+}
+  saveRDS(grid, "sims/grid.rds")
+}
+```
+
+## Plots
+
+The dimensions we want to look at are (1) sensitivity to observation error, (2) sensitivity to process variation, (3) sensitivity to spatial decay (kappa)
+
+First, we'll look at sensitivity to the observation error scale. This shows that as observation error increases (x-axis), the variance of our predictions of the spatial trend increases, RMSE increases, and the correlation between the observed and predicted fields decreases. These results are somewhat expected - higher observation error will corrupt the process, and the model will have a harder time identifying the true latent field. 
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of observation error on our ability to recover the estimated spatial trend", warning=FALSE, message = FALSE}
+library(ggsidekick)
+grid = readRDS("sims/grid.rds")
+col = "dark blue"
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, sigma_E==0.01)
+g1 = ggplot(sub, 
+  aes(phi, bias, group=phi)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Obs error ", sigma))) + coord_flip() +
+  ylab(" ") + 
+  stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+  #ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) +
+
+g2 = ggplot(sub, 
+  aes(phi, sd, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(" ") + coord_flip() + 
+  ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() 
+#g3 = ggplot(sub, 
+#  aes(phi, rmse, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab("Obs error scale") + 
+#  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color="black") + #theme_sleek()
+g4 = ggplot(sub, 
+  aes(phi, rho, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(" ") + 
+  ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+
+grid = readRDS("sims/grid.rds")
+sub = dplyr::filter(grid, phi==0.01)
+f1 = ggplot(sub, 
+  aes(sigma_E, bias, group=sigma_E)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+f2 = ggplot(sub, 
+  aes(sigma_E, sd, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+#f3 = ggplot(sub, 
+#  aes(sigma_E, rmse, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + #xlab(expression(paste("Spatiotemporal ", sigma))) + 
+#  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color=col) + #theme_sleek()
+f4 = ggplot(sub, 
+  aes(sigma_E, rho, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+
+pdf("sims/results_fig_gaussian.pdf")
+gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, nrow=2, ncol=3)
+dev.off()
+```
+
+Next, we'll look at sensitivity to process variation in the spatial field (sigma_O). This shows that there's little sensitivity to values of sigma_O in recovering the latent spatial trend. 
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of spatial variability on our ability to recover the estimated spatial trend"}
+grid = readRDS("sims/grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, phi==0.1)
+g1 = ggplot(sub, 
+  aes(sigma_E, bias, group=sigma_E)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin() + xlab("Spatiotemporal variability") + 
+  ylab("Bias, E[true - estimate]") + stat_summary(fun.y=median, geom="point", size=2, color="black") + theme_sleek()
+g2 = ggplot(sub, 
+  aes(sigma_E, sd, group=sigma_E)) + geom_violin() + xlab("Spatiotemporal variability") + 
+  ylab("SD[true - estimate]") + stat_summary(fun.y=median, geom="point", size=2, color="black") + theme_sleek()
+g3 = ggplot(sub, 
+  aes(sigma_E, rmse, group=sigma_E)) + geom_violin() + xlab("Spatiotemporal variability") + 
+  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color="black") + theme_sleek()
+g4 = ggplot(sub, 
+  aes(sigma_E, rho, group=sigma_E)) + geom_violin() + xlab("Spatiotemporal variability") + 
+  ylab("Correlation (obs, pred)") + stat_summary(fun.y=median, geom="point", size=2, color="black") + theme_sleek()
+gridExtra::grid.arrange(g1,g2,g3,g4)
+```
+
+Finally wel'll look at kappa, or the spatial decay. Again, there's not much of an effect of kappa on the ability to recover the field. 
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of spatial decay on our ability to recover the estimated spatial trend"}
+grid = readRDS("grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(dplyr::filter(sub, sigma_O == 0.01, phi == 0.05), 
+  aes(kappa, bias, group=kappa)) + geom_boxplot() + xlab("Spatial decay parameter") + 
+  ylab("Bias, E[true - estimate]")
+g2 = ggplot(dplyr::filter(sub, sigma_O == 0.01, phi == 0.05), 
+  aes(kappa, sd, group=kappa)) + geom_boxplot() + xlab("Spatial decay parameter") + 
+  ylab("SD[true - estimate]")
+g3 = ggplot(dplyr::filter(sub, sigma_O == 0.01, phi == 0.05), 
+  aes(kappa, rmse, group=kappa)) + geom_boxplot() + xlab("Spatial decay parameter") + 
+  ylab("RMSE")
+g4 = ggplot(dplyr::filter(sub, sigma_O == 0.01, phi == 0.05), 
+  aes(kappa, rho, group=kappa)) + geom_boxplot() + xlab("Spatial decay parameter") + 
+  ylab("Correlation (obs, pred)")
+gridExtra::grid.arrange(g1,g2,g3,g4)
+```
+
+# Model mis-specification
+
+One of the other important dimenstions to investigate is how model mis-specification affects our ability to recover the latent trend. In the above simualtions, we simulated data with and without the spatiotemporal component, and again, we used estimation models with and without the spatiotemporal components.  
+
+We can use any of the above metrics to quantify performance, but we'll start looking at the correlation. There doesn't seem to be much of an effect here on model mis-specification,
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of model-misspecification and observation error on Correlation in the estimated spatial trend"}
+grid = readRDS("grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rho, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatial")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==FALSE)
+g2 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rho, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==TRUE)
+g3 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rho, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==TRUE)
+g4 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rho, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+gridExtra::grid.arrange(g1,g2,g3,g4,nrow=2,ncol=2)
+```
+
+Next we can look at the same kinds of plots with RMSE, where again everything is basically on the same scale  
+
+```{r, fig.pos = "placeHere", fig.cap = "Effect of model-misspecification and observation error on RMSE in the estimated spatial trend"}
+grid = readRDS("grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rmse, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("RMSE") + ggtitle("Sim: spatial, Est: spatial")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==FALSE)
+g2 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rmse, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("RMSE") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==TRUE)
+g3 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rmse, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("RMSE") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==TRUE)
+g4 = ggplot(dplyr::filter(sub, kappa==0.01, sigma_O == 0.01), 
+  aes(phi, rmse, group=phi)) + geom_boxplot() + xlab("Scale of obs error") + 
+  ylab("RMSE") + ggtitle("Sim: spatial, Est: spatiotemporal")
+gridExtra::grid.arrange(g1,g2,g3,g4,nrow=2,ncol=2)
+```
+
+# Recovering a spatial trend with a Binomial distribution
+
+Like above, we can simulate the ability to recover the spatial trend as we change the family of distributions. Here, we'll try recovering the field with a binomial distribution. Because observation error appeared to be the largest contributor to the ability to estimate trend, we'll explore that and model mis-specification below (ignoring spatial decay and variability).
+
+```{r warning =FALSE, results='hide', message = FALSE}
+
+set.seed(123)
+n = 50
+binomial_grid = expand.grid("kappa" = c(0.01),
+  "sigma_O" = c(1, 10, 20, 30),
+  "seed" = .Random.seed[1:n],
+  "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
+  "sim_spatiotemporal" = c(TRUE,FALSE),
+  "est_spatiotemporal" = c(TRUE,FALSE))
+
+if(!file.exists("binomial_grid.rds")) {
+  # then do all the simulations below
+for(i in 1:nrow(binomial_grid)) {
+
+  set.seed(binomial_grid$seed[i])
+  coords = data.frame(x = stats::runif(40, 0, 10),
+    y = stats::runif(40,0,10))
+  
+  dat = sdmTMB::sim(x = coords$x, y = coords$y, 
+    time_steps = 10, plot = FALSE,
+    ar1_fields = FALSE,
+    sigma_O = binomial_grid$sigma_O[i], kappa = binomial_grid$kappa[i],
+    phi = 0.0001, 
+    sigma_E = ifelse(binomial_grid$sim_spatiotemporal[i]==TRUE,0.01,0))
+  
+  # center observations
+  dat = group_by(dat, time) %>% 
+    mutate(scale_obs = observed-mean(observed),
+      observed = scale_obs) %>% 
+    dplyr::select(-scale_obs)
+  
+  trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+    time_steps = 1, sigma_E = 0, phi = 0.0001,
+    plot = FALSE, kappa=0.1)
+  
+  # join in the trend for each location
+  trend = dplyr::rename(trend, trend= observed) %>%
+    dplyr::select(trend,x,y)
+  dat = dplyr::left_join(dat, trend) %>% 
+    dplyr::mutate(obs = observed + trend * (time-1))
+  # convert to binomial
+  dat$binom = ifelse(dat$obs < runif(nrow(dat)), 1, 0)
+  
+  # fit the model
+  spde <- make_spde(x = dat$x, y = dat$y, n_knots = 25)
+  mod = try(sdmTMB(formula = binom ~ 1, 
+    data = dat[,c("time","x","y","binom")], time="time",
+    spatial_trend = TRUE, spde=spde, family = binomial(link = "logit"),
+    spatial_only = ifelse(binomial_grid$est_spatiotemporal[i]==FALSE, 
+      TRUE, FALSE)) , silent=TRUE)
+  if(class(mod) != "try-error") {
+    
+    pred = dplyr::filter(predict(mod, 
+    newdata = dplyr::filter(dat[,c("time","x","y","binom")]), 
+    xy_cols = c("x", "y")), time==1)
+  
+    trend = dplyr::left_join(trend, pred[c("x","y","zeta_s")])
+    
+    # summarize the trend and RMSE
+    binomial_grid$rho[i] = cor(trend$trend,trend$zeta_s)
+    binomial_grid$bias[i] = mean(trend$trend - trend$zeta_s)
+    binomial_grid$sd[i] = sd(trend$trend - trend$zeta_s)
+    binomial_grid$rmse[i] = sqrt(mean((trend$trend - trend$zeta_s)^2))
+  }
+}
+  saveRDS(binomial_grid, "sims/binomial_grid.rds")
+}
+```
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of spatial variation on our ability to recover the estimated spatial trend", warning=FALSE, message = FALSE}
+grid = readRDS("binomial_grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Bias, E[true - estimate]")
+g2 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("SD[true - estimate]")
+g3 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("RMSE")
+g4 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)")
+gridExtra::grid.arrange(g1,g2,g3,g4)
+```
+
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of model-misspecification and observation error on Correlation in the estimated spatial trend"}
+grid = readRDS("grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatial")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==FALSE)
+g2 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==TRUE)
+g3 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==TRUE)
+g4 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+gridExtra::grid.arrange(g1,g2,g3,g4,nrow=2,ncol=2)
+```
+
+
+
+# Recovering a spatial trend with a Binomial distribution
+
+Like above, we can simulate the ability to recover the spatial trend as we change the family of distributions. Here, we'll try recovering the field with a binomial distribution. Because observation error appeared to be the largest contributor to the ability to estimate trend, we'll explore that and model mis-specification below (ignoring spatial decay and variability).
+
+```{r warning =FALSE, results='hide', message = FALSE}
+
+set.seed(123)
+n = 50
+binomial_grid = expand.grid("kappa" = c(0.01),
+  "sigma_O" = c(1, 10, 20, 30),
+  "seed" = .Random.seed[1:n],
+  "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
+  "sim_spatiotemporal" = c(TRUE,FALSE),
+  "est_spatiotemporal" = c(TRUE,FALSE))
+
+if(!file.exists("binomial_grid.rds")) {
+  # then do all the simulations below
+for(i in 1:nrow(binomial_grid)) {
+
+  set.seed(binomial_grid$seed[i])
+  coords = data.frame(x = stats::runif(40, 0, 10),
+    y = stats::runif(40,0,10))
+  
+  dat = sdmTMB::sim(x = coords$x, y = coords$y, 
+    time_steps = 10, plot = FALSE,
+    ar1_fields = FALSE,
+    sigma_O = binomial_grid$sigma_O[i], kappa = binomial_grid$kappa[i],
+    phi = 0.0001, 
+    sigma_E = ifelse(binomial_grid$sim_spatiotemporal[i]==TRUE,0.01,0))
+  
+  # center observations
+  dat = group_by(dat, time) %>% 
+    mutate(scale_obs = observed-mean(observed),
+      observed = scale_obs) %>% 
+    dplyr::select(-scale_obs)
+  
+  trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+    time_steps = 1, sigma_E = 0, phi = 0.0001,
+    plot = FALSE, kappa=0.1)
+  
+  # join in the trend for each location
+  trend = dplyr::rename(trend, trend= observed) %>%
+    dplyr::select(trend,x,y)
+  dat = dplyr::left_join(dat, trend) %>% 
+    dplyr::mutate(obs = observed + trend * (time-1))
+  # convert to binomial
+  dat$binom = ifelse(dat$obs < runif(nrow(dat)), 1, 0)
+  
+  # fit the model
+  spde <- make_spde(x = dat$x, y = dat$y, n_knots = 25)
+  mod = try(sdmTMB(formula = binom ~ 1, 
+    data = dat[,c("time","x","y","binom")], time="time",
+    spatial_trend = TRUE, spde=spde, family = binomial(link = "logit"),
+    spatial_only = ifelse(binomial_grid$est_spatiotemporal[i]==FALSE, 
+      TRUE, FALSE)) , silent=TRUE)
+  if(class(mod) != "try-error") {
+    
+    pred = dplyr::filter(predict(mod, 
+    newdata = dplyr::filter(dat[,c("time","x","y","binom")]), 
+    xy_cols = c("x", "y")), time==1)
+  
+    trend = dplyr::left_join(trend, pred[c("x","y","zeta_s")])
+    
+    # summarize the trend and RMSE
+    binomial_grid$rho[i] = cor(trend$trend,trend$zeta_s)
+    binomial_grid$bias[i] = mean(trend$trend - trend$zeta_s)
+    binomial_grid$sd[i] = sd(trend$trend - trend$zeta_s)
+    binomial_grid$rmse[i] = sqrt(mean((trend$trend - trend$zeta_s)^2))
+  }
+}
+  saveRDS(binomial_grid, "sims/binomial_grid.rds")
+}
+```
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of spatial variation on our ability to recover the estimated spatial trend", warning=FALSE, message = FALSE}
+grid = readRDS("binomial_grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Bias, E[true - estimate]")
+g2 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("SD[true - estimate]")
+g3 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("RMSE")
+g4 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)")
+gridExtra::grid.arrange(g1,g2,g3,g4)
+```
+
+
+```{r fig.pos = "placeHere", fig.cap = "Effect of model-misspecification and observation error on Correlation in the estimated spatial trend"}
+grid = readRDS("grid.rds")
+# spatial-only estimation and simulation models
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==FALSE)
+g1 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatial")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==FALSE)
+g2 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==FALSE, 
+  sim_spatiotemporal==TRUE)
+g3 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+
+sub = dplyr::filter(grid, est_spatiotemporal==TRUE, 
+  sim_spatiotemporal==TRUE)
+g4 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_boxplot() + xlab("Spatial variation") +
+  ylab("Correlation (obs, pred)") + ggtitle("Sim: spatial, Est: spatiotemporal")
+gridExtra::grid.arrange(g1,g2,g3,g4,nrow=2,ncol=2)
+```
