@@ -6,7 +6,7 @@ library(fpc)
 library(gridExtra)
 
 # choose which models based on # of knots
-knots = 450
+knots = 350
 # choose year to use as reference example (in figure 3)
 ex_year = 2011
 
@@ -280,30 +280,30 @@ for(spp in 1:length(species)) {
 }
 
 # save results
-save.image(file = "results/plotdata_lim_yearfixed2.Rdata")
+save.image(file = paste0("results/plotdata_lim_yearfixed_",knots,".Rdata"))
 #save(vg_stats, ref_ranges, all_clust, st_CVs, st_CVs_cluster, file = "results/plotdata.Rdata")
 
 # COG timeseries plots
-ggsave(filename = "plots/COG_color.pdf",
+ggsave(filename = paste0("plots/FigS2_COG_color",knots,".pdf"),
        plot = arrangeGrob(grobs = COG_plots, ncol = 5, bottom = "year",
                           left = grid::textGrob("COG Northings (10s km)", rot = 90, vjust = 0.2)),
        width = 12, height = 8, units = c("in"))
 
 # plot comparison of spatial and temporal CVs by species, species group
 st_CVs$species_group = species_groups
-ggsave(filename = "plots/SpatialTemporalCV.pdf",
+ggsave(filename = paste0("plots/SpatialTemporalCV",knots,".pdf"),
        plot = ggplot(st_CVs, aes(x=cv_s, y=cv_t, color = species_group, label = species)) +
               geom_point() +
               labs(x = "Spatial CV", y = "Temporal CV"), # + geom_text(aes(label = species), size = 2, hjust=0.5, vjust=-0.6),
        width = 6, height = 4, units = c("in"))
 
 # plot of predictions from full model (all fixed + random effects)
-ggsave(filename = "plots/predicted_density_maps.pdf",
+ggsave(filename = paste0("plots/predicted_density_maps",knots,".pdf"),
        plot = marrangeGrob(prediction_plots, nrow = 1, ncol = 1),
        width = 7, height = 9, units = c("in"))
 
 # plot only spatiotemporal random effects
-ggsave(filename = "plots/st_maps.pdf",
+ggsave(filename = paste0("plots/st_maps_",knots,".pdf"),
        plot = marrangeGrob(spatiotemporal_plots, nrow = 1, ncol = 1),
        width = 7, height = 9, units = c("in"))
 
@@ -383,11 +383,24 @@ for(spp in 1:length(species)){
   #    guides(color = guide_colorbar(title.position="bottom", title.hjust = 0.5))
   #}
 }
-ggsave(filename = "plots/Fig3_maps_COG.pdf",
+ggsave(filename = paste0("plots/Fig3_maps_COG_",knots,".pdf"),
        plot = arrangeGrob(grobs = c(trend_plots1[spp_subset1],
                                     cluster_plots1[spp_subset1],
                                     spatial_plots1[spp_subset1],
                                     COG_plots1[spp_subset1]),
                           ncol = 4, as.table = FALSE, bottom = "Eastings (10s km)",
                           left = grid::textGrob("Northings (10s km)", rot = 90, vjust = 0.2)),
-       width = 7.48, height = 8.5, units = c("in"))
+       width = 6.5, height = 8.5, units = c("in"))
+
+# make stripplot of clusters by latitude, colored by mean slope
+ggplot(all_clust, aes(x=species, y=Y, group = trend_cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
+  geom_jitter(position=position_dodge(0.4), size=0.5) +
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  ylab("Northings (10s km)") + geom_hline(yintercept=c(450,385)) +
+  scale_color_manual(name = "trend anomaly",
+                     values = c("(-Inf,-0.01]" = "red",
+                                "(-0.01,0.01]" = "darkgrey",
+                                "(0.01, Inf]" = "blue"),
+                     labels = c("-", "0", "+"))
+ggsave(filename = paste0("plots/Fig4_trendcluster_stripplot_",knots,".pdf"),
+       width = 10, height = 6, units = c("in"))
