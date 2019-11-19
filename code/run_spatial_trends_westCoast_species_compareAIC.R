@@ -1,4 +1,4 @@
-#devtools::install_github("pbs-assess/sdmTMB",ref="quadratic_range)
+#devtools::install_github("pbs-assess/sdmTMB",ref="quadratic_range")
 library(sdmTMB)
 library(ggplot2)
 library(raster)
@@ -46,7 +46,6 @@ haul_trans$year = as.numeric(substr(haul_trans$date_yyyymmdd,1,4))
 haul$X = haul_trans$Cent.Lon
 haul$Y = haul_trans$Cent.Lat
 haul$year = haul_trans$year
-#haul$year_centered = haul$year - mean(unique(haul$year))
 
 # center and scale depth, removing NAs
 haul = dplyr::filter(haul, !is.na(depth_hi_prec_m))
@@ -116,8 +115,6 @@ catch$common_name[which(catch$Scientific_name=="Citharichthys sordidus")] = "Pac
 catch$common_name[which(catch$Scientific_name=="Hydrolagus colliei")] = "spotted ratfish"
 
 catch = dplyr::filter(catch, !is.na(common_name))
-#catch %>% filter(common_name == "Pacific cod") %>% arrange(desc(cpue_kg_km2)) # can check for naming discrepancies and adequate catches
-
 
 
 species = unique(catch$common_name)
