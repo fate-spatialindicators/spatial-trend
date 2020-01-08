@@ -146,39 +146,39 @@ library(ggsidekick)
 grid = readRDS("sims/grid.rds")
 col = "dark blue"
 # spatial-only estimation and simulation models
-sub = dplyr::filter(grid, sigma_E==0.01)
+sub = dplyr::filter(grid, sigma_E==0.01, phi<1)
 g1 = ggplot(sub, 
-  aes(phi, bias, group=phi)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Obs error ", sigma))) + coord_flip() +
+  aes(phi, bias, group=phi)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Obs error ", sigma))) + coord_flip() +
   ylab(" ") + 
   stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
   #ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) +
 
 g2 = ggplot(sub, 
-  aes(phi, sd, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(" ") + coord_flip() + 
+  aes(phi, sd, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(" ") + coord_flip() + 
   ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() 
 #g3 = ggplot(sub, 
 #  aes(phi, rmse, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab("Obs error scale") + 
 #  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color="black") + #theme_sleek()
 g4 = ggplot(sub, 
-  aes(phi, rho, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(" ") + 
+  aes(phi, rho, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(" ") + 
   ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 
 grid = readRDS("sims/grid.rds")
-sub = dplyr::filter(grid, phi==0.01)
+sub = dplyr::filter(grid, phi==0.01,sigma_E<1)
 f1 = ggplot(sub, 
-  aes(sigma_E, bias, group=sigma_E)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+  aes(sigma_E, bias, group=sigma_E)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 f2 = ggplot(sub, 
-  aes(sigma_E, sd, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+  aes(sigma_E, sd, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 #f3 = ggplot(sub, 
 #  aes(sigma_E, rmse, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + #xlab(expression(paste("Spatiotemporal ", sigma))) + 
 #  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color=col) + #theme_sleek()
 f4 = ggplot(sub, 
-  aes(sigma_E, rho, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
+  aes(sigma_E, rho, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 
-pdf("sims/results_fig_gaussian.pdf")
+pdf("sims/results_fig_gaussian.pdf", height=5, width=8)
 gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, nrow=2, ncol=3)
 dev.off()
 ```
