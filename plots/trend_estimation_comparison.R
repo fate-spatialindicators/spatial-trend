@@ -40,36 +40,42 @@ for(i in 1:n) {
 
 saveRDS(pars,file="plots/trend_comparison.rds")
 
-
+pars = readRDS("plots/trend_comparison.rds")
 g1 = ggplot(pars, aes(as.factor(b1),post_hoc_trend-b1)) +
   geom_hline(aes(yintercept=0),col="grey50") +
   geom_boxplot(fill="dark blue",alpha=0.3,col="dark blue") +
-  xlab("B[1]") +
+  xlab(" ") +
   ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
-  ggtitle("Post-hoc trend estimation") +
+  ggtitle("Trend estimated post-hoc") +
   theme_sleek()
 
 g2 = ggplot(pars, aes(as.factor(re),post_hoc_trend-b1)) +
   geom_hline(aes(yintercept=0),col="grey50") +
   geom_boxplot(fill="dark blue",alpha=0.3,col="dark blue") +
-  xlab(expression(paste("Random effect ",sigma))) +
-  ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
-  ggtitle("Post-hoc trend estimation")
+  xlab(" ") +
+  #xlab(expression(paste("Random effect ",sigma))) +
+  #ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
+  ylab(" ") +
+  ggtitle("Trend estimated post-hoc") +
+  theme_sleek()
 
 g3 = ggplot(pars, aes(as.factor(b1),glmm_trend-b1)) +
   geom_hline(aes(yintercept=0),col="grey50") +
   geom_boxplot(fill="dark blue",alpha=0.3,col="dark blue") +
   xlab("B[1]") +
   ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
-  ggtitle("Trend estimation within GLMM")
+  ggtitle("Trend estimated within GLMM") +
+  theme_sleek()
 
 g4 = ggplot(pars, aes(as.factor(re),glmm_trend-b1)) +
   geom_hline(aes(yintercept=0),col="grey50") +
   geom_boxplot(fill="dark blue",alpha=0.3,col="dark blue") +
   geom_hline(aes(yintercept=0)) +
   xlab(expression(paste("Random effect ",sigma))) +
-  ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
-  ggtitle("Trend estimation within GLMM")
+  #ylab(expression(paste("Trend bias (",hat(theta)," - ",theta,")"))) +
+  ylab(" ") +
+  ggtitle("Trend estimated within GLMM") +
+  theme_sleek()
 
 pdf("plots/Figure S1 trend_estimation_comparison.pdf")
 gridExtra::grid.arrange(g1, g2, g3, g4, nrow=2)
