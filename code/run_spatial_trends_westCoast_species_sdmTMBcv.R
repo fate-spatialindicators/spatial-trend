@@ -89,31 +89,31 @@ names(catch) = tolower(names(catch))
 catch$trawl_id = as.numeric(catch$trawl_id)
 
 catch$common_name = NA
-catch$common_name[which(catch$Scientific_name=="Microstomus pacificus")] = "Dover sole"
-catch$common_name[which(catch$Scientific_name=="Sebastolobus alascanus")] = "shortspine thornyhead"
-catch$common_name[which(catch$Scientific_name=="Sebastolobus altivelis")] = "longspine thornyhead"
-catch$common_name[which(catch$Scientific_name=="Atheresthes stomias")] = "arrowtooth flounder"
-catch$common_name[which(catch$Scientific_name=="Eopsetta jordani")] = "petrale sole"
-catch$common_name[which(catch$Scientific_name=="Ophiodon elongatus")] = "lingcod"
-catch$common_name[which(catch$Scientific_name=="Hippoglossus stenolepis")] = "Pacific halibut" # few obs
-catch$common_name[which(catch$Scientific_name=="Glyptocephalus zachirus")] = "rex sole"
-catch$common_name[which(catch$Scientific_name=="Parophrys vetulus")] = "English sole"
-catch$common_name[which(catch$Scientific_name=="Anoplopoma fimbria")] = "sablefish"
-catch$common_name[which(catch$Scientific_name=="Sebastes pinniger")] = "canary rockfish" # few obs
-catch$common_name[which(catch$Scientific_name=="Sebastes flavidus")] = "yellowtail rockfish" # few obs
-catch$common_name[which(catch$Scientific_name=="Sebastes entomelas")] = "widow rockfish"
-catch$common_name[which(catch$Scientific_name=="Sebastes ruberrimus")] = "yelloweye rockfish" # few obs
-catch$common_name[which(catch$Scientific_name=="Sebastes diploproa")] = "splitnose rockfish"
-catch$common_name[which(catch$Scientific_name=="Sebastes alutus")] = "Pacific ocean perch"
-catch$common_name[which(catch$Scientific_name=="Sebastes crameri")] = "darkblotched rockfish"
-catch$common_name[which(catch$Scientific_name=="Sebastes paucispinis")] = "bocaccio" # few obs
-catch$common_name[which(catch$Scientific_name=="Sebastes goodei")] = "chilipepper" # few obs
-catch$common_name[which(catch$Scientific_name=="Gadus macrocephalus")] = "Pacific cod" # few obs
-catch$common_name[which(catch$Scientific_name=="Raja rhina")] = "longnose skate"
-catch$common_name[which(catch$Scientific_name=="Raja binoculata")] = "big skate"
-catch$common_name[which(catch$Scientific_name=="Squalus suckleyi")] = "spiny dogfish"
-catch$common_name[which(catch$Scientific_name=="Citharichthys sordidus")] = "Pacific sanddab"
-catch$common_name[which(catch$Scientific_name=="Hydrolagus colliei")] = "spotted ratfish"
+catch$common_name[which(catch$scientific_name=="Microstomus pacificus")] = "Dover sole"
+catch$common_name[which(catch$scientific_name=="Sebastolobus alascanus")] = "shortspine thornyhead"
+catch$common_name[which(catch$scientific_name=="Sebastolobus altivelis")] = "longspine thornyhead"
+catch$common_name[which(catch$scientific_name=="Atheresthes stomias")] = "arrowtooth flounder"
+catch$common_name[which(catch$scientific_name=="Eopsetta jordani")] = "petrale sole"
+catch$common_name[which(catch$scientific_name=="Ophiodon elongatus")] = "lingcod"
+catch$common_name[which(catch$scientific_name=="Hippoglossus stenolepis")] = "Pacific halibut" # few obs
+catch$common_name[which(catch$scientific_name=="Glyptocephalus zachirus")] = "rex sole"
+catch$common_name[which(catch$scientific_name=="Parophrys vetulus")] = "English sole"
+catch$common_name[which(catch$scientific_name=="Anoplopoma fimbria")] = "sablefish"
+catch$common_name[which(catch$scientific_name=="Sebastes pinniger")] = "canary rockfish" # few obs
+catch$common_name[which(catch$scientific_name=="Sebastes flavidus")] = "yellowtail rockfish" # few obs
+catch$common_name[which(catch$scientific_name=="Sebastes entomelas")] = "widow rockfish"
+catch$common_name[which(catch$scientific_name=="Sebastes ruberrimus")] = "yelloweye rockfish" # few obs
+catch$common_name[which(catch$scientific_name=="Sebastes diploproa")] = "splitnose rockfish"
+catch$common_name[which(catch$scientific_name=="Sebastes alutus")] = "Pacific ocean perch"
+catch$common_name[which(catch$scientific_name=="Sebastes crameri")] = "darkblotched rockfish"
+catch$common_name[which(catch$scientific_name=="Sebastes paucispinis")] = "bocaccio" # few obs
+catch$common_name[which(catch$scientific_name=="Sebastes goodei")] = "chilipepper" # few obs
+catch$common_name[which(catch$scientific_name=="Gadus macrocephalus")] = "Pacific cod" # few obs
+catch$common_name[which(catch$scientific_name=="Raja rhina")] = "longnose skate"
+catch$common_name[which(catch$scientific_name=="Raja binoculata")] = "big skate"
+catch$common_name[which(catch$scientific_name=="Squalus suckleyi")] = "spiny dogfish"
+catch$common_name[which(catch$scientific_name=="Citharichthys sordidus")] = "Pacific sanddab"
+catch$common_name[which(catch$scientific_name=="Hydrolagus colliei")] = "spotted ratfish"
 
 catch = dplyr::filter(catch, !is.na(common_name))
 
