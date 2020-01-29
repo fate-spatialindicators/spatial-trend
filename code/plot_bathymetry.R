@@ -29,7 +29,7 @@ identical(crs(CCA),crs(raster_hiRes)) # check that have same CRS
 raster_masked = raster::mask(raster_hiRes, CCA, inverse = TRUE)
 
 # plot map with bathymetry
-pdf(file = "paper/Fig3_bathymetry.pdf", width = 3.7, height = 6)
+pdf(file = "plots/Fig2_bathymetry.pdf", width = 3.7, height = 6)
 par(mar = c(3.1,3,0.1,0.1), mgp=c(2, 1, 0))
 plot(raster_masked, xlim = c(-126.1,-117.1), ylim = c(32,49), legend = FALSE,
      col = viridis(255), xlab = "Longitude", ylab = "Latitude", cex.axis = 0.8)
