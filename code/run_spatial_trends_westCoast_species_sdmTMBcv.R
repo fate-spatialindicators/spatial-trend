@@ -6,7 +6,7 @@ library(sdmTMB)
 library(sp)
 
 # haul data includes environmental covariates with location information
-haul = nwfscSurvey::PullHaul.fn(SurveyName = "NWFSC.Combo")
+haul = nwfscSurvey::PullHaul.fn(YearRange = c(2003, 2018), SurveyName = "NWFSC.Combo")
 
 # read in the grid cell data from the survey design
 grid_cells = readxl::read_excel("data/Selection Set 2018 with Cell Corners.xlsx")
@@ -68,7 +68,7 @@ bathy_raster <- projectRaster(bathy_hiRes, predict_raster, crs = newproj, method
 CCA = rgdal::readOGR('data/kv299cy7357.shp')
 CCA = sp::spTransform(CCA, sp::CRS(newproj))
 # mask CCA from bathymetry raster used for prediction
-bathy_raster = raster::mask(bathy_raster, CCA, inverse = TRUE)
+bathy_raster = suppressWarnings(raster::mask(bathy_raster, CCA, inverse = TRUE))
 # create matrix of point data with coordinates and depth from raster
 wc_grid <- as.data.frame(rasterToPoints(bathy_raster))
 colnames(wc_grid) = c("X", "Y", "depth")
@@ -83,9 +83,9 @@ saveRDS(wc_grid, file=paste0("data/wc_grid.rds")) # save prediction grid
 
 
 # catch data includes catch, effort, etc. This takes a few minutes to grab all ~ 900 spp
-catch = nwfscSurvey::PullCatch.fn(SurveyName="NWFSC.Combo")
+catch = nwfscSurvey::PullCatch.fn(YearRange = c(2003, 2018), SurveyName="NWFSC.Combo")
 # format to later join catch and haul
-catch = dplyr::rename(catch, trawl_id = Trawl_id)
+names(catch) = tolower(names(catch))
 catch$trawl_id = as.numeric(catch$trawl_id)
 
 catch$common_name = NA
@@ -95,7 +95,7 @@ catch$common_name[which(catch$Scientific_name=="Sebastolobus altivelis")] = "lon
 catch$common_name[which(catch$Scientific_name=="Atheresthes stomias")] = "arrowtooth flounder"
 catch$common_name[which(catch$Scientific_name=="Eopsetta jordani")] = "petrale sole"
 catch$common_name[which(catch$Scientific_name=="Ophiodon elongatus")] = "lingcod"
-catch$common_name[which(catch$Scientific_name=="Hippoglossus stenolepis")] = "Pacific halibut" # few obs, causing convergence problems
+catch$common_name[which(catch$Scientific_name=="Hippoglossus stenolepis")] = "Pacific halibut" # few obs
 catch$common_name[which(catch$Scientific_name=="Glyptocephalus zachirus")] = "rex sole"
 catch$common_name[which(catch$Scientific_name=="Parophrys vetulus")] = "English sole"
 catch$common_name[which(catch$Scientific_name=="Anoplopoma fimbria")] = "sablefish"
@@ -116,15 +116,8 @@ catch$common_name[which(catch$Scientific_name=="Citharichthys sordidus")] = "Pac
 catch$common_name[which(catch$Scientific_name=="Hydrolagus colliei")] = "spotted ratfish"
 
 catch = dplyr::filter(catch, !is.na(common_name))
-#catch %>% filter(common_name == "Pacific cod") %>% arrange(desc(cpue_kg_km2)) # can check for naming discrepancies and adequate catches
-
 
 # Loop over species
-# Things we talked about to do:
-# 3. project from the models with optimal knots using the predict() function to the same downscaled grid across all species
-# 4. calculate summary statistics from the raw estimated random effects (best model) or the predicted values. These could be mean / sd / CV,
-# estimates of correlation parameters from sdmTMB, or network summaries fit to the knot locations in the spde objects of the best models
-
 species = unique(catch$common_name)
 
 use_cv = FALSE
