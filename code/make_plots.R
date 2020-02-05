@@ -1,9 +1,13 @@
+devtools::install_github("seananderson/ggsidekick")
+library(ggsidekick)
+#devtools::install_github("pbs-assess/sdmTMB")
 library(sdmTMB)
 library(ggplot2)
 library(viridis)
 library(dplyr)
 library(fpc)
 library(gridExtra)
+library(rnaturalearth)
 
 # choose which models based on # of knots
 knots = 350
@@ -46,8 +50,7 @@ prediction_plots = list()
 prediction_plots_ex = list()
 spatiotemporal_plots = list()
 trend_plots = list()
-intercept_plots = list()
-spatial_plots = list()
+mean_dens_plots = list()
 cluster_plots = list()
 COG_plots = list()
 all_clust = NULL
@@ -73,10 +76,18 @@ for(spp in 1:length(species)) {
      d = readRDS(paste0("results/", species[spp],
        "/",species[spp],"_",
        knots,"_density_all_yr.rds"))
+     # below 2 lines necessary for models fit with older sdmTMB versions
+     d$tmb_data$weights_i = rep(1, length(d$tmb_data$y_i))
+     d$tmb_data$calc_quadratic_range = as.integer(FALSE)
+
      p = predict(d, newdata=wc_grid_all)
 
      #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      ## model checking
+     # check estimates of standard deviation in spatial (O for Omega) vs spatiotemporal (E for Epsilon) processes
+     #r <- d$tmb_obj$report()
+     #r$sigma_O
+     #r$sigma_E
      # check anisotropy
      #anisotropy_plots[[spp]] = plot_anisotropy(d) +
      # ggtitle(paste0(species[spp],"_aniso"))
@@ -137,20 +148,10 @@ for(spp in 1:length(species)) {
                legend.margin=margin(c(0,0,0,-1.2), unit='cm')) +
          labs(title = "Trend", y = species[spp])
      }
-     # make plot of spatial intercept
-     intercept_plots[[spp]] = plot_map_raster(dplyr::filter(p,year==2003), "omega_s") +
-       scale_fill_gradient2() +
-       theme(plot.title = element_text(margin = margin(t = 10, b = -20), hjust = 0.5),
-             axis.title = element_blank(),
-             axis.text = element_blank(),
-             legend.key.width = unit(0.2,"cm"),
-             legend.title = element_blank(),
-             legend.position = "right",
-             legend.margin=margin(c(0,0,0,-1.2), unit='cm')) +
-       labs(title = "Intercept")
 
      # make plot of predictions from full model for example year
-     prediction_plots_ex[[spp]] = plot_map_raster(dplyr::filter(p,year==ex_year), "est") +
+     p$est_exp <- exp(p$est)
+     prediction_plots_ex[[spp]] = plot_map_raster(dplyr::filter(p,year==ex_year), "est_exp") +
        scale_fill_viridis_c() +
        theme(plot.title = element_text(margin = margin(t = 10, b = -20), hjust = 0.5),
              axis.title = element_blank(),
@@ -159,28 +160,20 @@ for(spp in 1:length(species)) {
              legend.title = element_blank(),
              legend.position = "right",
              legend.margin=margin(c(0,0,0,-1.2), unit='cm')) +
-       labs(title = "Density")
+       labs(title = "Density 2011")
 
-     ## plot absolute rate of change in space
+     ## plot mean density
      # extract all coefficients
-     #sr_se <- summary(d$sd_report)[,"Std. Error"]
-     #b_j <- unname(d$model$par[grep("b_j", names(d$model$par))])
-     #b_j_se <- unname(sr_se[grep("b_j", names(sr_se))])
-     #mm <- cbind(b_j, b_j_se)
-     #colnames(mm) <- c("coef.est", "coef.se")
-     #row.names(mm) <- colnames(model.matrix(d$formula, d$data))
-     # get mean coefficient of year effects
-     #coef_fixed <- mean(unname(d$model$par[grep("b_j", names(d$model$par))])[c(1,4:18)])
-     # get absolute spatial change by combining mean of fixed effects with spatial trend, intercept
-     # (TO DO: choose numeric time t to multiply by slope field, and factor to multiply by mean year coefficient)
-     # most recent year would be 7 or 7.5 depending on how t_i handled. use 0 for log depth, 1 for log depth squared
-     #p$abs <-  exp(dplyr::filter(p,year==2003)$omega_s + 7*dplyr::filter(p,year==2003)$zeta_s + z*coef_fixed)
+     sr_se <- summary(d$sd_report)[,"Std. Error"]
+     b_j <- unname(d$model$par[grep("b_j", names(d$model$par))])
+     b_j_se <- unname(sr_se[grep("b_j", names(sr_se))])
+     mm <- cbind(b_j, b_j_se)
+     colnames(mm) <- c("coef.est", "coef.se")
+     row.names(mm) <- colnames(model.matrix(d$formula, d$data))
+     # get mean density
+     p$mean_exp <- exp(dplyr::filter(p,year==2003)$omega_s + 0.5*dplyr::filter(p,year==2003)$zeta_s + b_j[1] + b_j[10] + p$log_depth_scaled*b_j[2] + p$log_depth_scaled2*b_j[3])
 
-     # show example of "static" spatial components to visually weight trend by adding the intercept random field to the fixed effects,
-     # giving the predictions without the slope field and spatiotemporal fields
-     p$omega_fixed <- p$omega_s + p$est_non_rf
-
-     spatial_plots[[spp]] = plot_map_raster(dplyr::filter(p,year==ex_year), "omega_fixed") +
+     mean_dens_plots[[spp]] = plot_map_raster(dplyr::filter(p,year==ex_year), "mean_exp") +
        scale_fill_viridis_c() +
        theme(plot.title = element_text(margin = margin(t = 10, b = -20), hjust = 0.5),
              axis.title = element_blank(),
@@ -189,7 +182,7 @@ for(spp in 1:length(species)) {
              legend.title = element_blank(),
              legend.position = "right",
              legend.margin=margin(c(0,0,0,-1.2), unit='cm')) +
-       labs(title = "Trend weight")
+       labs(title = "Mean density")
 
      #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      # apply post-hoc clustering based on the trend and latitude, for 1 year (trend/ intercept same for all years)
@@ -280,25 +273,25 @@ for(spp in 1:length(species)) {
 }
 
 # save results
-save.image(file = paste0("results/plotdata_lim_yearfixed_",knots,".Rdata"))
+#save.image(file = paste0("results/plotdata_lim_yearfixed_",knots,".Rdata"))
 #save(vg_stats, ref_ranges, all_clust, st_CVs, st_CVs_cluster, file = "results/plotdata.Rdata")
 
 # COG timeseries plots
-ggsave(filename = paste0("plots/FigS2_COG_color",knots,".pdf"),
+ggsave(filename = paste0("plots/FigS2_COG_color_",knots,".pdf"),
        plot = arrangeGrob(grobs = COG_plots, ncol = 5, bottom = "year",
                           left = grid::textGrob("COG Northings (10s km)", rot = 90, vjust = 0.2)),
        width = 12, height = 8, units = c("in"))
 
 # plot comparison of spatial and temporal CVs by species, species group
 st_CVs$species_group = species_groups
-ggsave(filename = paste0("plots/SpatialTemporalCV",knots,".pdf"),
+ggsave(filename = paste0("plots/SpatialTemporalCV_",knots,".pdf"),
        plot = ggplot(st_CVs, aes(x=cv_s, y=cv_t, color = species_group, label = species)) +
               geom_point() +
               labs(x = "Spatial CV", y = "Temporal CV"), # + geom_text(aes(label = species), size = 2, hjust=0.5, vjust=-0.6),
        width = 6, height = 4, units = c("in"))
 
 # plot of predictions from full model (all fixed + random effects)
-ggsave(filename = paste0("plots/predicted_density_maps",knots,".pdf"),
+ggsave(filename = paste0("plots/predicted_density_maps_",knots,".pdf"),
        plot = marrangeGrob(prediction_plots, nrow = 1, ncol = 1),
        width = 7, height = 9, units = c("in"))
 
@@ -307,100 +300,91 @@ ggsave(filename = paste0("plots/st_maps_",knots,".pdf"),
        plot = marrangeGrob(spatiotemporal_plots, nrow = 1, ncol = 1),
        width = 7, height = 9, units = c("in"))
 
-# plot COG along with trend, intercept predicted to regular grid, along with clusters, for selected species
-spp_subset1 = c(1, 3, 7, 12, 14, 15)
-trend_plots1 = list()
-spatial_plots1 = list()
-cluster_plots1 = list()
-intercept_plots1 = list()
-prediction_plots_ex1 = list()
-COG_plots1 = list()
-
-for(spp in 1:length(species)){
-  if(spp == spp_subset1[1]){
-    trend_plots1[[spp]] = trend_plots[[spp]] +
-      theme(text = element_text(size = 5), plot.title = element_text(size=9, margin = margin(t = 5, b = -20), hjust = 0.55),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"), legend.text = element_text(size = 6),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5), axis.title.y = element_text(size = 8))
-    cluster_plots1[[spp]] = cluster_plots[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_text(size=9, margin = margin(t = 5, b = -20), hjust = 0.62))
-    spatial_plots1[[spp]] = spatial_plots[[spp]]+
-      theme(text = element_text(size = 8), plot.title = element_text(size=9, margin = margin(t = 5, b = -20), hjust = 0.55),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    prediction_plots_ex1[[spp]] = prediction_plots_ex[[spp]]+
-      theme(text = element_text(size = 8), plot.title = element_text(size=9, margin = margin(t = 5, b = -20), hjust = 0.55),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    intercept_plots1[[spp]] = intercept_plots[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_text(size=9, margin = margin(t = 5, b = -20), hjust = 0.55),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    COG_plots1[[spp]] = COG_plots[[spp]] +
-      scale_y_continuous(position = "right", breaks = seq(350, 500, by=50)) +
-      coord_cartesian(ylim = c(355,539)) +
-      theme(text = element_text(size = 8), plot.margin = unit(c(5.5,5.5,5.5,5.5), "pt"), legend.position = "none",
-            plot.title = element_text(margin = margin(t = 5, b = -20), hjust = 0.55)) +
-      labs(title = "COG", tag = element_blank())
-  }
-  else{
-    trend_plots1[[spp]] = trend_plots[[spp]] +
-      theme(text = element_text(size = 5), plot.title = element_blank(),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"), legend.text = element_text(size = 6),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5), axis.title.y = element_text(size = 8))
-    cluster_plots1[[spp]] = cluster_plots[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_blank())
-    spatial_plots1[[spp]] = spatial_plots[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_blank(),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    prediction_plots_ex1[[spp]] = prediction_plots_ex[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_blank(),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    intercept_plots1[[spp]] = intercept_plots[[spp]] +
-      theme(text = element_text(size = 8), plot.title = element_blank(),
-            legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
-            legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.93, 0.5))
-    COG_plots1[[spp]] = COG_plots[[spp]] +
-      scale_y_continuous(position = "right", breaks = seq(350, 500, by=50)) +
-      coord_cartesian(ylim = c(355,539)) +
-      theme(text = element_text(size = 8), plot.margin = unit(c(5.5,5.5,5.5,5.5), "pt"), legend.position = "none",
-            plot.title = element_blank()) +
-      labs(tag = element_blank())
-  }
-  # was trying to add this to above loop to make x axis labels on bottom panels,
-  # but there is an issue with the previous theme settings being empty as the original plot did not have axes
-  #if(spp == 19){
-  #  trend_plots1[[spp]] = trend_plots1[[spp]] + theme(axis.text.x = element_text())
-  #  trend_cluster_plots1[[spp]] = trend_cluster_plots1[[spp]] + theme(axis.text.x = element_text())
-  #  intercept_plots1[[spp]] = intercept_plots1[[spp]] + theme(axis.text.x = element_text())
-  #  intercept_cluster_plots1[[spp]] = intercept_cluster_plots1[[spp]] + theme(axis.text.x = element_text())
-  #  COG_plots1[[spp]] = COG_plots1[[spp]] +
-  #    theme(axis.text.x = element_text(), axis.title = element_text(size = 8),
-  #          legend.key.height = unit(0.2, "line"), legend.key.width = unit(0.8, "line"),
-  #          legend.direction = "horizontal", legend.title = element_text(size = 8, face = "bold")) +
-  #    guides(color = guide_colorbar(title.position="bottom", title.hjust = 0.5))
-  #}
-}
-ggsave(filename = paste0("plots/Fig3_maps_COG_",knots,".pdf"),
-       plot = arrangeGrob(grobs = c(trend_plots1[spp_subset1],
-                                    cluster_plots1[spp_subset1],
-                                    spatial_plots1[spp_subset1],
-                                    COG_plots1[spp_subset1]),
-                          ncol = 4, as.table = FALSE, bottom = "Eastings (10s km)",
-                          left = grid::textGrob("Northings (10s km)", rot = 90, vjust = 0.2)),
-       width = 6.5, height = 8.5, units = c("in"))
-
 # make stripplot of clusters by latitude, colored by mean slope
-ggplot(all_clust, aes(x=species, y=Y, group = trend_cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
+ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
   geom_jitter(position=position_dodge(0.4), size=0.5) +
+  theme_sleek()+
   theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
   ylab("Northings (10s km)") + geom_hline(yintercept=c(450,385)) +
-  scale_color_manual(name = "trend anomaly",
+  scale_color_manual(name = "Trend anomaly",
                      values = c("(-Inf,-0.01]" = "red",
                                 "(-0.01,0.01]" = "darkgrey",
                                 "(0.01, Inf]" = "blue"),
                      labels = c("-", "0", "+"))
-ggsave(filename = paste0("plots/Fig4_trendcluster_stripplot_",knots,".pdf"),
+ggsave(filename = paste0("plots/Fig4_trendcluster_stripplot_",knots,"_0.01.pdf"),
        width = 10, height = 6, units = c("in"))
+
+
+## plot COG along with trend, trend cluster, and density, for selected species subsets
+spp_subset1 = c(1, 3, 7, 12, 14, 15)
+spp_subset2 = (1:spp)[!(1:spp %in% spp_subset1)]
+trend_plots1 = list()
+mean_dens_plots1 = list()
+cluster_plots1 = list()
+prediction_plots_ex1 = list()
+COG_plots1 = list()
+
+# get coastlines and transform to projection and scale of data
+shore <- rnaturalearth::ne_countries(continent = "north america", scale = "medium", returnclass = "sp")
+shore <- sp::spTransform(shore, CRS = "+proj=utm +zone=10 ellps=WGS84")
+shore <- fortify(shore)
+shore$long <- shore$long/10000
+shore$lat <- shore$lat/10000
+
+# use customized theme
+theme_map <- function (base_size = 12, base_family = "") {
+  theme_gray(base_size = base_size, base_family = base_family) %+replace%
+    theme(
+      panel.background = element_rect(fill = "white", colour = NA),
+      #panel.grid       = element_line(colour = "grey87"),
+      #panel.grid.major = element_line(size = rel(0.5)),
+      panel.grid.minor = element_blank(),
+      panel.border     = element_rect(fill = NA, colour = "grey70", size = rel(1)),
+      axis.ticks       = element_line(colour = "grey70", size = rel(0.5)),
+    )
+}
+theme_set(theme_map())
+
+for(spp in 1:length(species)){
+  trend_plots1[[spp]] = trend_plots[[spp]] + annotation_map(shore, color = "black", fill = "white", size=0.1) +
+    theme(text = element_text(size = 5), plot.title = element_blank(), axis.text = element_blank(),
+          legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"), legend.text = element_text(size = 6),
+          legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.83, 0.5), axis.title.y = element_text(size = 8))
+  cluster_plots1[[spp]] = cluster_plots[[spp]] + annotation_map(shore, color = "black", fill = "white", size=0.1) +
+    theme(text = element_text(size = 8), plot.title = element_blank())
+  #mean_dens_plots[[spp]]$data$mean_exp <- log(mean_dens_plots[[spp]]$data$mean_exp) # switch back to log scale for visualization
+  mean_dens_plots1[[spp]] = mean_dens_plots[[spp]] + annotation_map(shore, color = "black", fill = "white", size=0.1) +
+    #scale_fill_viridis_c(trans="log",
+    #                     breaks = c(min(mean_dens_plots[[spp]]$data$mean_exp), floor(max(mean_dens_plots[[spp]]$data$mean_exp)/200), floor(max(mean_dens_plots[[spp]]$data$mean_exp))),
+    #                     labels = c(round(min(mean_dens_plots[[spp]]$data$mean_exp)), round(max(mean_dens_plots[[spp]]$data$mean_exp)/200, digits = -1), round(max(mean_dens_plots[[spp]]$data$mean_exp), digits = -2))) +
+    theme(text = element_text(size = 8), plot.title = element_blank(),
+          legend.key.height = unit(0.55, "line"), legend.key.width = unit(0.2, "line"),
+          legend.margin=margin(c(0,0,0,0), unit='cm'), legend.position = c(0.83, 0.5))
+  COG_plots1[[spp]] = COG_plots[[spp]] +
+    scale_y_continuous(position = "right", breaks = seq(350, 500, by=50)) +
+    coord_cartesian(ylim = c(355,539)) +
+    theme(text = element_text(size = 8), plot.margin = unit(c(2.3,5.5,5.5,5.5), "pt"), legend.position = "none",
+          plot.title = element_blank(), axis.text.x = element_blank()) +
+    labs(tag = element_blank())
+}
+
+ggsave(filename = paste0("plots/Fig3_maps_COG_",knots,"_land.pdf"),
+       plot = arrangeGrob(grobs = c(trend_plots1[spp_subset1],
+                                    cluster_plots1[spp_subset1],
+                                    mean_dens_plots1[spp_subset1],
+                                    COG_plots1[spp_subset1]),
+                          ncol = 4, as.table = FALSE, bottom = "Eastings (10s km)",
+                          left = grid::textGrob("Northings (10s km)", rot = 90, vjust = 0.2)),
+       width = 6, height = 8.5, units = c("in"))
+
+# For appendix figure verion of Fig 3, including all remaining species
+ggsave(filename = paste0("plots/Fig3_maps_COG_",knots,"_land_SI.pdf"),
+       plot = arrangeGrob(grobs = c(trend_plots1[spp_subset2],
+                                    cluster_plots1[spp_subset2],
+                                    mean_dens_plots1[spp_subset2],
+                                    COG_plots1[spp_subset2]),
+                          ncol = 4, as.table = FALSE, bottom = "Eastings (10s km)",
+                          left = grid::textGrob("Northings (10s km)", rot = 90, vjust = 0.2)),
+       width = 6, height = 18, units = c("in"))
+
+theme_set(theme_grey())
