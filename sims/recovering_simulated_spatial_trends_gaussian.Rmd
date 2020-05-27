@@ -71,13 +71,15 @@ Using the above approach, we can simulate a large number of datasets to evaluate
 set.seed(123)
 n = 100
 grid = expand.grid("kappa" = 1,
-  "phi" = c(0.01,0.25,0.5,0.75,1),
-  "sigma_O" = 0.01,
-  "sigma_E" = c(0.01,0.25,0.5,0.75,1),
+  "phi" = c(0.01,0.25,0.5,0.75),
+  "sigma_O" = c(0.01,0.25,0.5),
+  "sigma_O_trend" = c(0.01,0.25,0.5),
+  "sigma_E" = c(0.01,0.25,0.5,0.75),
   "seed" = .Random.seed[1:n],
   "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
   "sim_spatiotemporal" = TRUE,
   "est_spatiotemporal" = TRUE)
+saveRDS(grid, file="sims/grid.rds")
 ```
 
 Then iterate through the grid, simulating and estimating the underlying trend field.   
@@ -91,7 +93,7 @@ for(i in 1:nrow(grid)) {
     y = stats::runif(40,0,10))
   
   dat = sdmTMB::sim(x = coords$x, y = coords$y, 
-    time_steps = 10, plot = FALSE,
+    time_steps = 10,
     ar1_fields = FALSE,
     sigma_O = grid$sigma_O[i], 
     kappa = grid$kappa[i],
@@ -99,8 +101,9 @@ for(i in 1:nrow(grid)) {
     sigma_E = grid$sigma_E[i])
   
   trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+    sigma_O = grid$sigma_O_trend[i],
     time_steps = 1, sigma_E = 0, 
-    plot = FALSE, kappa=0.1)
+    kappa=0.1)
   
   # join in the trend for each location
   trend = dplyr::rename(trend, trend= observed) %>%
@@ -145,41 +148,63 @@ First, we'll look at sensitivity to the observation error scale. This shows that
 library(ggsidekick)
 grid = readRDS("sims/grid.rds")
 col = "dark blue"
-# spatial-only estimation and simulation models
-sub = dplyr::filter(grid, sigma_E==0.01, phi<1)
+
+# first make facet with respect to phi (observation error)
+sub = dplyr::filter(grid, sigma_E==0.25, sigma_O == 0.25, sigma_O_trend == 0.25, phi<1)
+
 g1 = ggplot(sub, 
   aes(phi, bias, group=phi)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Obs error ", sigma))) + coord_flip() +
   ylab(" ") + 
-  stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek()
-  #ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) +
-
+  stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek()
 g2 = ggplot(sub, 
   aes(phi, sd, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(" ") + coord_flip() + 
-  ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() 
-#g3 = ggplot(sub, 
-#  aes(phi, rmse, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5) + xlab("Obs error scale") + 
-#  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color="black") + #theme_sleek()
+  ylab(" ") + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() 
 g4 = ggplot(sub, 
   aes(phi, rho, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(" ") + 
-  ylab(" ") + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+  ylab(" ") + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 
+# second make facet with respect to sigma_E (spatiotemporal variation)
 grid = readRDS("sims/grid.rds")
-sub = dplyr::filter(grid, phi==0.01,sigma_E<1)
+sub = dplyr::filter(grid, phi==0.25,sigma_E<1,sigma_O == 0.25, sigma_O_trend == 0.25)
 f1 = ggplot(sub, 
   aes(sigma_E, bias, group=sigma_E)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 f2 = ggplot(sub, 
   aes(sigma_E, sd, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
-#f3 = ggplot(sub, 
-#  aes(sigma_E, rmse, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5) + #xlab(expression(paste("Spatiotemporal ", sigma))) + 
-#  ylab("RMSE") + stat_summary(fun.y=median, geom="point", size=2, color=col) + #theme_sleek()
+  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 f4 = ggplot(sub, 
   aes(sigma_E, rho, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
-  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun.y=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+
+# third make facet with respect to sigma_O (spatial variation)
+grid = readRDS("sims/grid.rds")
+sub = dplyr::filter(grid, phi==0.25,sigma_E==0.25, sigma_O < 1, sigma_O_trend == 0.25)
+h1 = ggplot(sub, 
+  aes(sigma_O, bias, group=sigma_O)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial ", sigma))) + 
+  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+h2 = ggplot(sub, 
+  aes(sigma_O, sd, group=sigma_O)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial ", sigma))) + 
+  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+h4 = ggplot(sub, 
+  aes(sigma_O, rho, group=sigma_O)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial ", sigma))) + 
+  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+
+# fourth make facet with respect to sigma_O_trend (spatial trend variation)
+grid = readRDS("sims/grid.rds")
+sub = dplyr::filter(grid, phi==0.25,sigma_E==0.25, sigma_O==0.25, sigma_O_trend <1)
+j1 = ggplot(sub, 
+  aes(sigma_O_trend, bias, group=sigma_O_trend)) + geom_hline(aes(yintercept=0),col="grey") + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial trend ", sigma))) + 
+  ylab(expression(paste("Bias E[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+j2 = ggplot(sub, 
+  aes(sigma_O_trend, sd, group=sigma_O_trend)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial trend ", sigma))) + 
+  ylab(expression(paste("SD[", theta, "-",hat(theta),"]"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+j4 = ggplot(sub, 
+  aes(sigma_O_trend, rho, group=sigma_O_trend)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial trend ", sigma))) + 
+  ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
+
 
 pdf("sims/results_fig_gaussian.pdf", height=5, width=8)
-gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, nrow=2, ncol=3)
+gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, h1,h2,h4,j1,j2,j4,nrow=4, ncol=3)
 dev.off()
 ```
 
