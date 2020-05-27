@@ -202,6 +202,9 @@ j4 = ggplot(sub,
   aes(sigma_O_trend, rho, group=sigma_O_trend)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.3) + xlab(expression(paste("Spatial trend ", sigma))) + 
   ylab(expression(paste("Correlation (", theta, ", ",hat(theta),")"))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek() + coord_flip()
 
+pdf("sims/results_fig_gaussian_orig.pdf", height=5, width=8)
+gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4,nrow=2, ncol=3)
+dev.off()
 
 pdf("sims/results_fig_gaussian.pdf", height=5, width=8)
 gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, h1,h2,h4,j1,j2,j4,nrow=4, ncol=3)
