@@ -78,7 +78,8 @@ grid = expand.grid("kappa" = 1,
   "seed" = .Random.seed[1:n],
   "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
   "sim_spatiotemporal" = TRUE,
-  "est_spatiotemporal" = TRUE)
+  "est_spatiotemporal" = TRUE,
+  "aic" = NA)
 saveRDS(grid, file="sims/grid.rds")
 ```
 
@@ -128,6 +129,7 @@ for(i in 1:nrow(grid)) {
     trend = dplyr::left_join(trend, pred[c("x","y","zeta_s")])
     
     # summarize the trend and RMSE
+    grid$aic[i] = AIC(mod)
     grid$rho[i] = cor(trend$trend,trend$zeta_s)
     grid$bias[i] = mean(trend$trend - trend$zeta_s)
     grid$sd[i] = sd(trend$trend - trend$zeta_s)
@@ -135,6 +137,76 @@ for(i in 1:nrow(grid)) {
   }
 }
   saveRDS(grid, "sims/grid.rds")
+}
+```
+
+Re run models without spatial trend to look at difference with AIC. 
+```{r}
+set.seed(123)
+n = 100
+grid_no_trend = expand.grid("kappa" = 1,
+  "phi" = c(0.01,0.25,0.5,0.75),
+  "sigma_O" = c(0.01,0.25,0.5),
+  "sigma_O_trend" = c(0.01,0.25,0.5),
+  "sigma_E" = c(0.01,0.25,0.5,0.75),
+  "seed" = .Random.seed[1:n],
+  "rmse"=NA, "rho" = NA, "bias"=NA,"sd"=NA,
+  "sim_spatiotemporal" = TRUE,
+  "est_spatiotemporal" = TRUE,
+  "aic" = NA)
+
+if(!file.exists("sims/grid_no_trend.rds")) {
+  # then do all the simulations below
+for(i in 1:nrow(grid_no_trend)) {
+
+  set.seed(grid_no_trend$seed[i])
+  coords = data.frame(x = stats::runif(40, 0, 10),
+    y = stats::runif(40,0,10))
+  
+  dat = sdmTMB::sim(x = coords$x, y = coords$y, 
+    time_steps = 10,
+    ar1_fields = FALSE,
+    sigma_O = grid_no_trend$sigma_O[i], 
+    kappa = grid_no_trend$kappa[i],
+    phi = grid_no_trend$phi[i], 
+    sigma_E = grid_no_trend$sigma_E[i])
+  
+  trend <- sdmTMB::sim(x = coords$x, y = coords$y,
+    sigma_O = grid_no_trend$sigma_O_trend[i],
+    time_steps = 1, sigma_E = 0, 
+    kappa=0.1)
+  
+  # join in the trend for each location
+  trend = dplyr::rename(trend, trend= observed) %>%
+    dplyr::select(trend,x,y)
+  dat = dplyr::left_join(dat, trend) %>% 
+    dplyr::mutate(obs = observed + trend * (time-1))
+  
+  # fit the model
+  spde <- make_spde(x = dat$x, y = dat$y, n_knots = 25)
+  mod = try(sdmTMB(formula = obs ~ 1, 
+    data = dat[,c("time","x","y","obs")], time="time",
+    spatial_trend = FALSE, spde=spde,
+    spatial_only = ifelse(grid_no_trend$est_spatiotemporal[i]==FALSE, 
+      TRUE, FALSE)) , silent=TRUE)
+  # filter out the unconverged cases or cases with warnings for hessian
+  if(class(mod) != "try-error" && length(which(is.na(sqrt(diag(mod$sd_report$cov.fixed))))) == 0) {
+    
+    pred = dplyr::filter(predict(mod, 
+    newdata = dplyr::filter(dat[,c("time","x","y","obs")]), 
+    xy_cols = c("x", "y")), time==1)
+  
+    trend = dplyr::left_join(trend, pred[c("x","y","zeta_s")])
+    
+    # summarize the trend and RMSE
+    grid_no_trend$aic[i] = AIC(mod)
+    grid_no_trend$rho[i] = cor(trend$trend,trend$zeta_s)
+    grid_no_trend$bias[i] = mean(trend$trend - trend$zeta_s)
+    grid_no_trend$sd[i] = sd(trend$trend - trend$zeta_s)
+    grid_no_trend$rmse[i] = sqrt(mean((trend$trend - trend$zeta_s)^2))
+  }
+}
+  saveRDS(grid_no_trend, "sims/grid_no_trend.rds")
 }
 ```
 
@@ -206,10 +278,55 @@ pdf("sims/results_fig_gaussian_orig.pdf", height=5, width=8)
 gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4,nrow=2, ncol=3)
 dev.off()
 
+pdf("sims/results_fig_gaussian_orig_SI.pdf", height=5, width=8)
+gridExtra::grid.arrange(h1,h2,h4,j1,j2,j4,nrow=2, ncol=3)
+dev.off()
+
 pdf("sims/results_fig_gaussian.pdf", height=5, width=8)
 gridExtra::grid.arrange(g1, g2, g4, f1, f2, f4, h1,h2,h4,j1,j2,j4,nrow=4, ncol=3)
 dev.off()
 ```
+
+Next we'll look at the AIC / model selection support between the models with and without the trend.
+
+```{r}
+library(ggsidekick)
+grid = readRDS("sims/grid.rds")
+no_trend = readRDS("sims/grid_no_trend.rds")
+grid$aic_notrend = no_trend$aic
+
+col = "dark blue"
+
+# first make facet with respect to phi (observation error)
+sub = dplyr::filter(grid, sigma_E==0.25, sigma_O == 0.25, sigma_O_trend == 0.25, phi<1)
+g1 = ggplot(sub, 
+  aes(phi, aic-aic_notrend, group=phi)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.2) + xlab(expression(paste("Obs error ", sigma))) +
+  ylab(expression(paste('AIC'[trend],' - ','AIC'[no~trend]))) + 
+  stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek()
+
+# second, spatiotemporal variation
+sub = dplyr::filter(grid, phi==0.25,sigma_E<1,sigma_O == 0.25, sigma_O_trend == 0.25)
+f1 = ggplot(sub, 
+  aes(sigma_E, aic-aic_notrend, group=sigma_E)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.2) + xlab(expression(paste("Spatiotemporal ", sigma))) + 
+  ylab(expression(paste('AIC'[trend],' - ','AIC'[no~trend]))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek()
+
+# third, spatiotemporal variation sigma_O (spatial variation)
+sub = dplyr::filter(grid, phi==0.25,sigma_E==0.25, sigma_O < 1, sigma_O_trend == 0.25)
+h1 = ggplot(sub, 
+  aes(sigma_O, aic-aic_notrend, group=sigma_O)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.2) + xlab(expression(paste("Spatial ", sigma))) + 
+  ylab(expression(paste('AIC'[trend],' - ','AIC'[no~trend]))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek()
+
+# fourth, sigma_O_trend, spatial variation of trend
+sub = dplyr::filter(grid, phi==0.25,sigma_E==0.25, sigma_O==0.25, sigma_O_trend <1)
+j1 = ggplot(sub, 
+  aes(sigma_O_trend, aic-aic_notrend, group=sigma_O_trend)) + geom_violin(fill=col,col=NA,alpha=0.5,width=0.2) + xlab(expression(paste("Spatial trend ", sigma))) + 
+  ylab(expression(paste('AIC'[trend],' - ','AIC'[no~trend]))) + stat_summary(fun=median, geom="point", size=2, color=col) + theme_sleek()
+
+pdf("sims/results_fig_gaussian_AIC.pdf", height=5, width=8)
+gridExtra::grid.arrange(g1, f1, h1, j1,nrow=2, ncol=2)
+dev.off()
+```
+
 
 Next, we'll look at sensitivity to process variation in the spatial field (sigma_O). This shows that there's little sensitivity to values of sigma_O in recovering the latent spatial trend. 
 
