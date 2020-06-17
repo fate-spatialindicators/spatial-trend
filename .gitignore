@@ -1,4 +1,5 @@
-
 *.rds
 .Rproj.user
 paper/archive
+.DS_Store
+^~$
