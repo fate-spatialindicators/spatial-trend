@@ -1,4 +1,9 @@
-
 *.rds
 .Rproj.user
 paper/archive
+.DS_Store
+*.tmp
+# Word temporary
+~$*.doc*
+# Word Auto Backup File
+Backup of *.doc*
