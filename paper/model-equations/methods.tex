@@ -1,0 +1,71 @@
+\documentclass[12pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1.25in]{geometry}
+\usepackage{amsmath, amsfonts, amssymb}
+\usepackage{subfig}
+\usepackage[dvipsnames]{xcolor}
+\definecolor{niceblue}{HTML}{236899}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=black,
+    filecolor=black,      
+    urlcolor=niceblue,
+    citecolor=niceblue,
+    linkbordercolor = white
+}
+\usepackage{amsbsy}
+\usepackage{epsfig}
+\usepackage{subfig}
+\usepackage{bm}
+\usepackage{xspace}
+\usepackage{color}
+\usepackage{subfloat}
+\usepackage{lineno}
+
+\definecolor{darkgrey}{HTML}{A9A9A9}
+\renewcommand\linenumberfont{\normalfont\bfseries\small\color{darkgrey}}
+
+\usepackage{booktabs}
+\usepackage[round]{natbib}
+\bibliographystyle{fishfish}
+\usepackage{geometry} % see geometry.pdf on how to lay out the page. There's lots.
+\geometry{a4paper} % or letter or a5paper or ... etc
+% \geometry{landscape} % rotated page geometry
+
+% See the ``Article customise'' template for come common customisations
+
+\title{}
+\author{}
+\date{} % delete this line to display the current date
+
+\usepackage[round]{natbib}
+
+\begin{document}
+
+We modelled the response $y_{s,t}$ (catch per unit effort [CPUE] at point in space $s$ and time $t$) with a Tweedie distribution and a log link \citep{tweedie1984, dunn2005, anderson2019synopsis}
+\begin{align}
+  y_{s,t} &\sim \operatorname{Tweedie} \left(\mu_{s,t}, p, \phi \right), \: 1 < p < 2\ ,\\
+  \mu_{s,t} &= \exp 
+  \left(\alpha_t + \beta_1 D_{s,t} + \beta_2 D_{s,t}^2 + \omega_s + \epsilon_{s,t}  + \zeta_s t \right),\\
+  \bm{\omega} &\sim \operatorname{MVNormal} \left( \bm{0}, \bm{\Sigma}_\omega \right),\\
+  \bm{\epsilon}_t &\sim \operatorname{MVNormal} \left( \bm{0}, \bm{\Sigma}_{\epsilon} \right),\\
+   \bm{\zeta} &\sim \operatorname{MVNormal} \left( \bm{0}, \bm{\Sigma}_\zeta \right),
+\end{align}
+where $\mu$ represents the mean, $p$ represents the power parameter, and $\phi$ represents the dispersion parameter.
+The $\alpha_t$ parameters represent means for each year, and $\beta_{1}$ and $\beta_{2}$ represent coefficients for log depth ($D$) and log depth squared ($D^2$).
+The symbols $\omega_s$ and $\epsilon_{s,t}$ represent spatial and spatiotemporal random effects drawn from Gaussian Markov random fields \citep{cressie2011} with covariance matrices $\bm{\Sigma}_{\epsilon}$ and $\bm{\Sigma}_\omega$.
+The symbol $\zeta_s$ represents the spatially varying coefficients that represent local trends through time also drawn from Gaussian Markov random fields.
+All three random fields have covariance matrices constrained by Mat\'ern covariance functions \citep{cressie2011} with independent scales but shared $\kappa$ parameters controlling the rate of decay of spatial correlation with distance \citep{cressie2011}.
+
+Something about mesh \citep{rue2009, lindgren2011} \ldots 
+
+something about optimization and REML \ldots
+
+anisotropy \ldots
+
+with the package sdmTMB \citep{anderson2019synopsis, sdmTMB}, which interfaces automatic differentiation in Template Model Builder \citep{kristensen2016} with INLA \citep{rue2009}
+
+\bibliography{refs}
+
+\end{document}
