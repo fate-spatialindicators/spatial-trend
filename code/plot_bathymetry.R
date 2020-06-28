@@ -5,6 +5,7 @@
 library(raster)
 library(rgdal)
 library(viridis)
+library(oce)
 
 # create maps of US west coast states
 states <- c('California', 'Oregon', 'Washington', "Idaho", "Nevada", "Montana")
@@ -38,4 +39,20 @@ plot(raster_masked, legend.only=TRUE, col = viridis(255), legend.width = 0.4,
      axis.args=list(at = seq(-100,-1200,-150), labels = seq(100,1200,150), cex.axis=0.75),
      legend.args=list(text='Depth (m)', side = 4, line=2.3, cex=0.8))
 compassRose(-124.5, 36.5, cex=0.6)
+dev.off()
+
+#############################################################################################
+# Inset of broader area
+
+data(coastlineWorldFine, package="ocedata")
+
+pdf(file = "plots/Fig2_bathymetry_inset.pdf", width = 6, height = 6)
+mapPlot(coastlineCut(coastlineWorldFine, -135),
+        longitudelim=c(-153, -75), latitudelim=c(25, 50),
+        proj="+proj=tmerc +lat_0=31.96 +lon_0=-121.6 +k=1 +x_0=390000 +y_0=15000 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0",
+        col='grey',
+        border = 'black', grid = c(30,20))
+rect(xleft = 0, xright = 800000,
+     ybottom = 100000, ytop = 2000000,
+     lwd = 4)
 dev.off()
