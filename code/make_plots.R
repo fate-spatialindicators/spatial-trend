@@ -242,13 +242,17 @@ ggsave(filename = paste0("plots/st_maps_",knots,".pdf"),
 ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
   geom_jitter(position=position_dodge(0.4), size=0.5) +
   theme_sleek()+
-  theme(axis.title.x=element_blank(), axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+  theme(axis.title.x=element_blank(),
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        legend.title = element_text(size=13),
+        legend.text = element_text(size=14)) +
   ylab("Northings (10s km)") + geom_hline(yintercept=c(450,385)) +
   scale_color_manual(name = "Trend anomaly",
                      values = c("(-Inf,-0.01]" = "red",
                                 "(-0.01,0.01]" = "darkgrey",
                                 "(0.01, Inf]" = "blue"),
-                     labels = c("-", "0", "+"))
+                     labels = c("-", "0", "+")) +
+  guides(color = guide_legend(override.aes = list(size=5)))
 ggsave(filename = paste0("plots/Fig4_trendcluster_stripplot_",knots,"_0.01.pdf"),
        width = 10, height = 6, units = c("in"))
 
