@@ -37,12 +37,6 @@ species_drop = c("chilipepper", "longspine thornyhead", "Pacific cod", "Pacific 
                  "yelloweye rockfish", "yellowtail rockfish")# species with poor model convergence/fit
 species = species[!(species %in% species_drop)]
 
-# define species groups, in alphabetic order of species
-species_groups = c("flatfish","chond","rockfish","rockfish","rockfish",
-                  "flatfish", "flatfish", "roundfish", "chond",
-                  "flatfish", "rockfish", "flatfish", "flatfish", "roundfish",
-                  "rockfish", "chond", "rockfish", "chond", "rockfish")
-
 anisotropy_plots = list()
 qq_plots = list()
 residuals_plots = list()
@@ -54,7 +48,6 @@ mean_dens_plots = list()
 cluster_plots = list()
 COG_plots = list()
 all_clust = NULL
-st_CVs = NULL
 
 # plotting functions
 plot_map_point <- function(dat, column = "omega_s") {
@@ -82,36 +75,6 @@ for(spp in 1:length(species)) {
 
      p = predict(d, newdata=wc_grid_all)
 
-     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     ## model checking
-     # check estimates of standard deviation in spatial (O for Omega) vs spatiotemporal (E for Epsilon) processes
-     #r <- d$tmb_obj$report()
-     #r$sigma_O
-     #r$sigma_E
-     # check anisotropy
-     #anisotropy_plots[[spp]] = plot_anisotropy(d) +
-     # ggtitle(paste0(species[spp],"_aniso"))
-     ## residuals
-     #data = select(d$data, X, Y, cpue_kg_km2, year)
-     #data$residuals = residuals(d)
-     # qq plots
-     #qq_plots[[spp]] = qqnorm(data$residuals)
-     # spatial residuals
-     #residuals_plots[[spp]] = plot_map_point(data, "residuals") + facet_wrap(~year) + geom_point(size=0.05, alpha=0.1) +
-      # coord_fixed() + scale_color_gradient2() + ggtitle(species[spp])
-     # check convergence
-     #sd = as.data.frame(summary(TMB::sdreport(d$tmb_obj)))
-     #print(species[spp])
-     #print(d$sd_report)
-     # check whether AR1 assumption is supported in models where fields are not IID, printing estimate and 95%CI for AR1 param
-     #print("AR1 estimate")
-     #print(sd$Estimate[row.names(sd) == "ar1_phi"])
-     #print("AR1 parameter 95% CI")
-     #print(sd$Estimate[row.names(sd) == "ar1_phi"] +
-     # c(-2, 2) * sd$`Std. Error`[row.names(sd) == "ar1_phi"])
-
-     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     #maps
      # make plot of predictions from full model (all fixed + random effects)
      prediction_plots[[spp]] = plot_map_raster(p, "est") +
        facet_wrap(~year) +
@@ -254,41 +217,16 @@ for(spp in 1:length(species)) {
                 plot.margin = unit(c(0,0,0,3), "pt"),
                 legend.position = "none")
       }
-     # Adding legend manually because in the code below, legend.position to put legend inside plot causes coastwide COG line to disapear!
-     #scale_color_gradient(low = "#feb24c", high = "#a50f15", "Biomass", guide = "colourbar", breaks = c(0,1), limits = c(0, 1)) +
-     #theme(axis.title = element_blank(), title = element_text(size = rel(0.9)),
-     #     axis.text.x = element_blank(), plot.margin = unit(c(0,0,1,3), "pt"),
-     #    legend.key.height = unit(0.5,"line"), legend.key.width = unit(0.8, "line"),
-     #   legend.margin = margin(c(-1.9,1,0,-9.4), unit='line'), legend.direction = "horizontal",legend.justification = c(0,1),
-     #  legend.title = element_text(size = 12, face = "bold")) +
-     # guides(color = guide_colorbar(title.position="top", title.hjust = 0.5))
-
-     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     # save spatial and temporal CVs for each species
-     st_CVs = rbind(st_CVs,
-                    cbind(p %>% filter(year==2003) %>% summarize(cv_s = sd(exp(omega_s))/mean(exp(omega_s))),
-                    p %>% group_by(year) %>% summarize(mean_est = mean(exp(est))) %>% ungroup() %>%
-                      summarize(cv_t = sd(mean_est)/mean(mean_est)),
-                    species = species[spp]))
 }
 
 # save results
 #save.image(file = paste0("results/plotdata_lim_yearfixed_",knots,".Rdata"))
-#save(vg_stats, ref_ranges, all_clust, st_CVs, st_CVs_cluster, file = "results/plotdata.Rdata")
 
 # COG timeseries plots
 ggsave(filename = paste0("plots/FigS2_COG_color_",knots,".pdf"),
        plot = arrangeGrob(grobs = COG_plots, ncol = 5, bottom = "year",
                           left = grid::textGrob("COG Northings (10s km)", rot = 90, vjust = 0.2)),
        width = 12, height = 8, units = c("in"))
-
-# plot comparison of spatial and temporal CVs by species, species group
-st_CVs$species_group = species_groups
-ggsave(filename = paste0("plots/SpatialTemporalCV_",knots,".pdf"),
-       plot = ggplot(st_CVs, aes(x=cv_s, y=cv_t, color = species_group, label = species)) +
-              geom_point() +
-              labs(x = "Spatial CV", y = "Temporal CV"), # + geom_text(aes(label = species), size = 2, hjust=0.5, vjust=-0.6),
-       width = 6, height = 4, units = c("in"))
 
 # plot of predictions from full model (all fixed + random effects)
 ggsave(filename = paste0("plots/predicted_density_maps_",knots,".pdf"),
