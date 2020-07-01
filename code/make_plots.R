@@ -151,7 +151,7 @@ for(spp in 1:length(species)) {
      # apply post-hoc clustering based on the trend and latitude, for 1 year (trend/ intercept same for all years)
      unique_lon = unique(p$X)[seq(1,length(unique(p$X)),by=10)] # downsampling longitude to speed things up
      # We use the scale function to standardize lat/trend, otherwise lat totally dominates
-     clust = pamk(scale(dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("Y","zeta_s")]))
+     clust = pamk(dplyr::filter(p, year == 2003, X %in% unique_lon)[,"zeta_s"])
      d2003 = dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("X","Y","zeta_s")]
      d2003$cluster = clust$pamobject$clustering
 

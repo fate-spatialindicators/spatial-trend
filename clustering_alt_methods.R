@@ -78,18 +78,26 @@ for(spp in 1:length(species)) {
   #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   # apply post-hoc clustering based on the trend and latitude, for 1 year (trend/ intercept same for all years)
 
-  # Method 1: as in main manuscript figure but without latitude and testing whether 1 cluster is supported
-  # Note: Dover gets 1 cluster here as opposed to original analysis, but none get 1 if do not downsample longitude and use usepam = FALSE
+  # Original method, but including testing whether 1 cluster is supported
+  #unique_lon = unique(p$X)[seq(1,length(unique(p$X)),by=10)] # downsampling longitude to speed things up
+  #clust = pamk(scale(dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("Y","zeta_s")]), krange = 1:10)
+  #d2003 = dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("X","Y","zeta_s")]
+
+  # Alternative method 1: as in main manuscript figure but without latitude
+  #unique_lon = unique(p$X)[seq(1,length(unique(p$X)),by=10)] # downsampling longitude to speed things up
+  #clust = pamk(dplyr::filter(p, year == 2003, X %in% unique_lon)[,"zeta_s"])
+  #d2003 = dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("X","Y","zeta_s")]
+
+  # Alternative method 1b: as in main manuscript figure but without latitude, constrained to 2-3 clusters
   unique_lon = unique(p$X)[seq(1,length(unique(p$X)),by=10)] # downsampling longitude to speed things up
-  clust = pamk(scale(dplyr::filter(p, year == 2003)[,"zeta_s"]), krange = 1:10)
+  clust = pamk(dplyr::filter(p, year == 2003, X %in% unique_lon)[,"zeta_s"], krange = 2:3)
   d2003 = dplyr::filter(p, year == 2003, X %in% unique_lon)[,c("X","Y","zeta_s")]
-  d2003$cluster = clust$pamobject$clustering
 
-  # Method 2: as method 1 but wihtout downscaling
-  #clust = pamk(scale(dplyr::filter(p, year == 2003)[,"zeta_s"]), krange = 1:10, usepam = FALSE)
+  # Alternative method 2: as method 1 but without downscaling
+  #clust = pamk(dplyr::filter(p, year == 2003)[,"zeta_s"], usepam = FALSE)
   #d2003 = dplyr::filter(p, year == 2003)[,c("X","Y","zeta_s")]
-  #d2003$cluster = clust$pamobject$clustering
 
+  d2003$cluster = clust$pamobject$clustering
 
   # compile data for stripplot of trend clusters by latitude, colored by trend anomaly, for all species
   d2003$zeta_s = scale(d2003$zeta_s, scale = FALSE) # mean center slopes to remove influence of total population abundance trend
@@ -107,6 +115,13 @@ for(spp in 1:length(species)) {
 
 }
 
+# save results
+#save.image(file = paste0("results/plotdata_trendcluster_downscaled_",knots,".Rdata"))
+#save.image(file = paste0("results/plotdata_trendonlycluster_downscaled_",knots,".Rdata"))
+save.image(file = paste0("results/plotdata_trendonlycluster_downscaled_clust_lim_",knots,".Rdata"))
+#save.image(file = paste0("results/plotdata_trendonlycluster_",knots,".Rdata"))
+
+
 # make stripplot of clusters by latitude, colored by mean slope
 ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
   geom_jitter(position=position_dodge(0.4), size=0.5) +
@@ -122,5 +137,5 @@ ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(
                                 "(0.01, Inf]" = "blue"),
                      labels = c("-", "0", "+")) +
   guides(color = guide_legend(override.aes = list(size=5)))
-ggsave(filename = paste0("plots/Fig4_trendonlycluster_stripplot_",knots,"_0.01.pdf"),
+ggsave(filename = paste0("plots/Fig4_trendonlycluster_stripplot_clust_lim",knots,"_0.01.pdf"),
        width = 10, height = 6, units = c("in"))
