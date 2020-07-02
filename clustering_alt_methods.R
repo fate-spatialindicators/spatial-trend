@@ -1,4 +1,4 @@
-devtools::install_github("seananderson/ggsidekick")
+#devtools::install_github("seananderson/ggsidekick")
 library(ggsidekick)
 #devtools::install_github("pbs-assess/sdmTMB")
 library(sdmTMB)
@@ -6,8 +6,6 @@ library(ggplot2)
 library(viridis)
 library(dplyr)
 library(fpc)
-library(gridExtra)
-library(rnaturalearth)
 
 # choose which models based on # of knots
 knots = 350
@@ -37,16 +35,7 @@ species_drop = c("chilipepper", "longspine thornyhead", "Pacific cod", "Pacific 
                  "yelloweye rockfish", "yellowtail rockfish")# species with poor model convergence/fit
 species = species[!(species %in% species_drop)]
 
-anisotropy_plots = list()
-qq_plots = list()
-residuals_plots = list()
-prediction_plots = list()
-prediction_plots_ex = list()
-spatiotemporal_plots = list()
-trend_plots = list()
-mean_dens_plots = list()
 cluster_plots = list()
-COG_plots = list()
 all_clust = NULL
 
 # plotting functions
@@ -56,13 +45,6 @@ plot_map_point <- function(dat, column = "omega_s") {
     xlab("Eastings") +
     ylab("Northings")
 }
-plot_map_raster <- function(dat, column = "omega_s") {
-  ggplot(dat, aes_string("X", "Y", fill = column)) +
-    geom_raster() +
-    xlab("Eastings") +
-    ylab("Northings")
-}
-
 
 # loop over species
 for(spp in 1:length(species)) {
@@ -124,6 +106,9 @@ save.image(file = paste0("results/plotdata_trendonlycluster_downscaled_clust_lim
 
 # make stripplot of clusters by latitude, colored by mean slope
 ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(-Inf, -0.01, 0.01, Inf)))) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 375, ymax = 395, alpha = .1) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = 440, ymax = 460, alpha = .1) +
+  geom_hline(yintercept=c(450,385)) +
   geom_jitter(position=position_dodge(0.4), size=0.5) +
   theme_sleek()+
   theme(axis.title.x=element_blank(),
@@ -131,14 +116,14 @@ ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(
         legend.title = element_text(size=13),
         legend.text = element_text(size=14)) +
   ylab("Northings (10s km)") +
-  geom_hline(yintercept=c(450,385)) +
+
   scale_color_manual(name = "Trend anomaly",
                      values = c("(-Inf,-0.01]" = "red",
                                 "(-0.01,0.01]" = "darkgrey",
                                 "(0.01, Inf]" = "blue"),
                      labels = c("-", "0", "+")) +
   guides(color = guide_legend(override.aes = list(size=5)))
-ggsave(filename = paste0("plots/Fig4_trendonlycluster_stripplot_clust_lim",knots,"_0.01.pdf"),
+ggsave(filename = paste0("plots/FigS4_trendonlycluster_stripplot_clust_lim_",knots,"_0.01.pdf"),
        width = 10, height = 6, units = c("in"))
 
 
@@ -155,6 +140,3 @@ clust_breaks <- ungroup(all_clust) %>%
 
 clust_breaks %>% summarize(prop_match = mean(match_breaks), prop_between = mean(between_breaks)) # proportions within species
 ungroup(clust_breaks) %>% summarize(prop_match = mean(match_breaks), prop_between = mean(between_breaks)) # overall proportions
-
-
-
