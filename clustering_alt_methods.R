@@ -130,7 +130,8 @@ ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(
         axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
         legend.title = element_text(size=13),
         legend.text = element_text(size=14)) +
-  ylab("Northings (10s km)") + geom_hline(yintercept=c(450,385)) +
+  ylab("Northings (10s km)") +
+  geom_hline(yintercept=c(450,385)) +
   scale_color_manual(name = "Trend anomaly",
                      values = c("(-Inf,-0.01]" = "red",
                                 "(-0.01,0.01]" = "darkgrey",
@@ -139,3 +140,21 @@ ggplot(all_clust, aes(x=species, y=Y, group = cluster, color=cut(mean_zeta_s, c(
   guides(color = guide_legend(override.aes = list(size=5)))
 ggsave(filename = paste0("plots/Fig4_trendonlycluster_stripplot_clust_lim",knots,"_0.01.pdf"),
        width = 10, height = 6, units = c("in"))
+
+
+# analyze how likely breaks are to be close to biogeographic breaks
+clust_breaks <- ungroup(all_clust) %>%
+  group_by(species, cluster) %>%
+  mutate(low_break = min(Y), high_break = max(Y)) %>%
+  ungroup() %>%
+  distinct(species, cluster, .keep_all = TRUE) %>%
+  group_by(species) %>%
+  mutate(match_breaks = low_break <= 395 & low_break >= 375 | low_break <= 460 & low_break >= 440 |
+           high_break <= 395 & high_break >= 375 | high_break <= 460 & high_break >= 440,
+         between_breaks = low_break > 395 & low_break < 440 | high_break > 395 & high_break < 440)
+
+clust_breaks %>% summarize(prop_match = mean(match_breaks), prop_between = mean(between_breaks)) # proportions within species
+ungroup(clust_breaks) %>% summarize(prop_match = mean(match_breaks), prop_between = mean(between_breaks)) # overall proportions
+
+
+
