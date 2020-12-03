@@ -46,7 +46,6 @@ haul_trans$year = as.numeric(substr(haul_trans$date_yyyymmdd,1,4))
 haul$X = haul_trans$Cent.Lon
 haul$Y = haul_trans$Cent.Lat
 haul$year = haul_trans$year
-#haul$year_centered = haul$year - mean(unique(haul$year))
 
 # center and scale depth, removing NAs
 haul = dplyr::filter(haul, !is.na(depth_hi_prec_m))
@@ -127,16 +126,15 @@ for(spp in 1:length(species)) {
   haul_new = dplyr::left_join(haul, subset)
 
   # iterate fits over a range of number of knots,
-  # using AUC and Tweedie predictive density to evaluate performance
+  # using Tweedie predictive density to evaluate performance
   performance <- data.frame(
     knots = seq(350,450, by = 100),
-    auc = 0, tweedie_dens = 0
+    tweedie_dens = 0
   )
 
   for (k in seq_len(nrow(performance))) {
 
-    # sdmTMB_cv
-    # create ids based on latitude quantiles
+    # when using cross-validation, create fold ids based on latitude quantiles
     haul_new$fold = 5
     haul_new$fold[which(haul_new$lat < quantile(haul_new$lat,0.8))] = 4
     haul_new$fold[which(haul_new$lat < quantile(haul_new$lat,0.6))] = 3
@@ -173,14 +171,6 @@ for(spp in 1:length(species)) {
 
     # validate against the test set
     performance[k, "tweedie_dens"] = sum(density_model$data$cv_loglik)
-
     saveRDS(performance, file = paste0("results/",species[spp],"_performance_yr.rds"))
   }
-
-  # plot Tweedie predictive density as a function of knots. Higher is better.
-  #b <- ggplot(performance, aes(knots, tweedie_dens)) + geom_point() +
-  #  geom_line() + ylab("Tweedie predictive density") + xlab("Knots")
-
-  #performance_plot <- ggpubr::ggarrange(a, b, ncol = 1, nrow = 2)
-  #ggpubr::ggexport(performance_plot, filename = paste0("results/",species[spp],"_knots.pdf"))
 }
